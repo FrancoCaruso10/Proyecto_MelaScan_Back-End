@@ -27,6 +27,17 @@ app.get('/pacientes', async (req, res) => {
   }
 });
 
+// --- DERMATOLOGOS ---
+app.get('/dermatologos', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, nombre, email, especialidad FROM dermatologo'
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 app.post('/usuarios', async (req, res) => {
   try {
     const { nombre, email } = req.body;
