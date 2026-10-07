@@ -15,10 +15,12 @@ app.get('/', (req, res) => {
   res.send('API MelaScan lista y conectada a Neon PostgreSQL');
 });
 
-// --- USUARIOS ---
-app.get('/usuarios', async (req, res) => {
+// --- PACIENTES ---
+app.get('/pacientes', async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM usuario');
+    const { rows } = await pool.query(
+      'SELECT id, nombre, email, dermatologo_id FROM paciente'
+    );
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
