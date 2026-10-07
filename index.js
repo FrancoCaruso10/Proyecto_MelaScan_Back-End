@@ -50,6 +50,18 @@ app.get('/analisis', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// --- MENSAJES ---
+app.get('/mensajes', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, paciente_id, dermatologo_id, emisor, texto, fecha_envio, leido FROM mensaje ORDER BY fecha_envio ASC'
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 app.post('/usuarios', async (req, res) => {
   try {
     const { nombre, email } = req.body;
