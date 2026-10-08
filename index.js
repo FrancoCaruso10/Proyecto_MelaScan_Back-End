@@ -63,6 +63,25 @@ app.get('/mensajes', async (req, res) => {
   }
 });
 
+// --- ENVIAR MENSAJE ---
+app.post('/mensajes', async (req, res) => {
+  const { paciente_id, dermatologo_id, emisor, texto } = req.body;
+
+  if (!paciente_id || !dermatologo_id || !texto || !['MEDICO', 'PACIENTE'].includes(emisor)) {
+    return res.status(400).json({ error: 'Faltan datos o el emisor no es válido (MEDICO o PACIENTE)' });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      'INSERT INTO mensaje (paciente_id, dermatologo_id, emisor, texto, fecha_envio, leido) VALUES ($1, $2, $3, $4, NOW(), false) RETURNING *',
+      [paciente_id, dermatologo_id, emisor, texto]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Servidor en puerto ${PORT}`));
 
