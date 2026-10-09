@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const app = express();
 app.use(express.json());
 
@@ -143,6 +144,49 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     res.status(201).json({ rol, ...resultado.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- LOGIN ---
+app.post('/api/auth/login', async (req, res) => {
+  const { email, contrasena } = req.body;
+
+  if (!email || !contrasena) {
+    return res.status(400).json({ error: 'Faltan el email o la contraseña' });
+  }
+
+  try {
+    // Buscamos el email primero entre los pacientes y después entre los médicos
+    let rol = 'PACIENTE';
+    let consulta = await pool.query(
+      'SELECT id, nombre, email, contrasena FROM paciente WHERE email = $1',
+      [email]
+    );
+    if (consulta.rows.length === 0) {
+      rol = 'MEDICO';
+      consulta = await pool.query(
+        'SELECT id, nombre, email, contrasena FROM dermatologo WHERE email = $1',
+        [email]
+      );
+    }
+
+    const usuario = consulta.rows[0];
+    // Mismo mensaje si no existe el email o si la clave está mal, para no dar pistas
+    const valida = usuario ? await bcrypt.compare(contrasena, usuario.contrasena) : false;
+    if (!valida) {
+      return res.status(401).json({ error: 'Email o contraseña incorrectos' });
+    }
+
+    // Armamos la "pulserita": guarda quién sos y vence en 8 horas
+    const token = jwt.sign(
+      { id: usuario.id, rol },
+      process.env.JWT_SECRET,
+      { expiresIn: '8h' }
+    );
+
+    res.json({ token, rol, id: usuario.id, nombre: usuario.nombre, email: usuario.email });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
