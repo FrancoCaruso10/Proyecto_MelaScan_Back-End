@@ -192,6 +192,30 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// --- GUARDIA: revisa la pulserita (token) ---
+function verificarToken(req, res, next) {
+  // La pulserita viaja en un encabezado que dice: Authorization: Bearer <token>
+  const cabecera = req.headers.authorization || '';
+  const [tipo, token] = cabecera.split(' ');
+
+  if (tipo !== 'Bearer' || !token) {
+    return res.status(401).json({ error: 'Falta el token. Iniciá sesión.' });
+  }
+
+  try {
+    // Si la firma es falsa o venció, jwt.verify tira un error
+    req.usuario = jwt.verify(token, process.env.JWT_SECRET);
+    next(); // Todo bien: lo dejamos pasar al buzón
+  } catch (err) {
+    res.status(401).json({ error: 'Token inválido o vencido' });
+  }
+}
+
+// --- QUIEN SOY (buzón de prueba para el guardia) ---
+app.get('/api/yo', verificarToken, (req, res) => {
+  res.json({ id: req.usuario.id, rol: req.usuario.rol });
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Servidor en puerto ${PORT}`));
 
