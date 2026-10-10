@@ -68,18 +68,41 @@ app.get('/mensajes', verificarToken, async (req, res) => {
   }
 });
 
-// --- ENVIAR MENSAJE ---
-app.post('/mensajes', async (req, res) => {
-  const { paciente_id, dermatologo_id, emisor, texto } = req.body;
-
-  if (!paciente_id || !dermatologo_id || !texto || !['MEDICO', 'PACIENTE'].includes(emisor)) {
-    return res.status(400).json({ error: 'Faltan datos o el emisor no es válido (MEDICO o PACIENTE)' });
+// --- ENVIAR MENSAJE (quién manda sale del token) ---
+app.post('/mensajes', verificarToken, async (req, res) => {
+  const { texto } = req.body;
+  if (!texto) {
+    return res.status(400).json({ error: 'Falta el texto del mensaje' });
   }
 
   try {
+    let paciente_id;
+    let dermatologo_id;
+
+    if (req.usuario.rol === 'PACIENTE') {
+      // El paciente le escribe a su médico asignado
+      paciente_id = req.usuario.id;
+      const p = await pool.query('SELECT dermatologo_id FROM paciente WHERE id = $1', [paciente_id]);
+      dermatologo_id = p.rows[0] && p.rows[0].dermatologo_id;
+      if (!dermatologo_id) {
+        return res.status(400).json({ error: 'No tenés un médico asignado' });
+      }
+    } else {
+      // El médico elige a qué paciente le escribe, pero solo a los suyos
+      dermatologo_id = req.usuario.id;
+      paciente_id = req.body.paciente_id;
+      const p = await pool.query(
+        'SELECT 1 FROM paciente WHERE id = $1 AND dermatologo_id = $2',
+        [paciente_id, dermatologo_id]
+      );
+      if (p.rows.length === 0) {
+        return res.status(403).json({ error: 'Ese paciente no es tuyo' });
+      }
+    }
+
     const { rows } = await pool.query(
       'INSERT INTO mensaje (paciente_id, dermatologo_id, emisor, texto, fecha_envio, leido) VALUES ($1, $2, $3, $4, NOW(), false) RETURNING *',
-      [paciente_id, dermatologo_id, emisor, texto]
+      [paciente_id, dermatologo_id, req.usuario.rol, texto]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
