@@ -52,11 +52,15 @@ app.get('/analisis', async (req, res) => {
   }
 });
 
-// --- MENSAJES ---
-app.get('/mensajes', async (req, res) => {
+// --- MENSAJES (solo los tuyos) ---
+app.get('/mensajes', verificarToken, async (req, res) => {
   try {
+    // El paciente ve los mensajes donde él es el paciente; el médico, los de sus pacientes
+    const columna = req.usuario.rol === 'PACIENTE' ? 'paciente_id' : 'dermatologo_id';
     const { rows } = await pool.query(
-      'SELECT id, paciente_id, dermatologo_id, emisor, texto, fecha_envio, leido FROM mensaje ORDER BY fecha_envio ASC'
+      `SELECT id, paciente_id, dermatologo_id, emisor, texto, fecha_envio, leido
+       FROM mensaje WHERE ${columna} = $1 ORDER BY fecha_envio ASC`,
+      [req.usuario.id]
     );
     res.json(rows);
   } catch (err) {
