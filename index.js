@@ -29,11 +29,11 @@ app.get('/pacientes', verificarToken, async (req, res) => {
   }
 });
 
-// --- DERMATOLOGOS ---
+// --- DERMATOLOGOS (público: el paciente elige médico al registrarse) ---
 app.get('/dermatologos', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT id, nombre, email, especialidad FROM dermatologo'
+      'SELECT id, nombre, especialidad FROM dermatologo ORDER BY nombre'
     );
     res.json(rows);
   } catch (err) {
