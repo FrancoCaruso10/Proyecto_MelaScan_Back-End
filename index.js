@@ -16,12 +16,13 @@ app.get('/', (req, res) => {
   res.send('API MelaScan lista y conectada a Neon PostgreSQL');
 });
 
-// --- PACIENTES ---
-app.get('/pacientes', async (req, res) => {
+// --- PACIENTES (solo médicos) ---
+app.get('/pacientes', verificarToken, async (req, res) => {
+  if (req.usuario.rol !== 'MEDICO') {
+    return res.status(403).json({ error: 'Solo los médicos pueden ver esta lista' });
+  }
   try {
-    const { rows } = await pool.query(
-      'SELECT id, nombre, email, dermatologo_id FROM paciente'
-    );
+    const { rows } = await pool.query('SELECT id, nombre FROM paciente ORDER BY nombre');
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
