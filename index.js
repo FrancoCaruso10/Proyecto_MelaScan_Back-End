@@ -128,6 +128,31 @@ app.patch('/mensajes/:id/leido', async (req, res) => {
   }
 });
 
+// --- MARCAR MENSAJE COMO LEIDO (solo quien lo recibió) ---
+app.patch('/mensajes/:id/leido', verificarToken, async (req, res) => {
+  const { id } = req.params;
+
+  // Si sos paciente, tus mensajes tienen tu id en paciente_id; si sos médico, en dermatologo_id
+  const columna = req.usuario.rol === 'PACIENTE' ? 'paciente_id' : 'dermatologo_id';
+  // Solo se marcan como leídos los que mandó la otra persona
+  const otroRol = req.usuario.rol === 'PACIENTE' ? 'MEDICO' : 'PACIENTE';
+
+  try {
+    const { rows } = await pool.query(
+      `UPDATE mensaje SET leido = true
+       WHERE id = $1 AND ${columna} = $2 AND emisor = $3
+       RETURNING *`,
+      [id, req.usuario.id, otroRol]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Mensaje no encontrado' });
+    }
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- REGISTRO ---
 app.post('/api/auth/register', async (req, res) => {
   const { nombre, email, contrasena, especialidad, dermatologo_id } = req.body;
