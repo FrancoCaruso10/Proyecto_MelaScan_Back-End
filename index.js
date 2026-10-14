@@ -41,11 +41,15 @@ app.get('/dermatologos', async (req, res) => {
   }
 });
 
-// --- ANALISIS ---
-app.get('/analisis', async (req, res) => {
+// --- ANALISIS (solo los tuyos) ---
+app.get('/analisis', verificarToken, async (req, res) => {
   try {
+    // El paciente ve los análisis donde él es el paciente; el médico, los que hizo
+    const columna = req.usuario.rol === 'PACIENTE' ? 'paciente_id' : 'dermatologo_id';
     const { rows } = await pool.query(
-      'SELECT id, paciente_id, dermatologo_id, resultado_ia, imagen_url, zona_cuerpo, sintomas, fecha FROM analisis ORDER BY fecha DESC'
+      `SELECT id, paciente_id, dermatologo_id, resultado_ia, imagen_url, zona_cuerpo, sintomas, fecha
+       FROM analisis WHERE ${columna} = $1 ORDER BY fecha DESC`,
+      [req.usuario.id]
     );
     res.json(rows);
   } catch (err) {
