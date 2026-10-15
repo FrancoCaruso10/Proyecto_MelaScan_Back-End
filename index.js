@@ -141,10 +141,16 @@ app.patch('/mensajes/:id/leido', verificarToken, async (req, res) => {
   }
 });
 
-// --- REGISTRO ---
+// --- REGISTRO (el paciente puede elegir varios médicos) ---
 app.post('/api/auth/register', async (req, res) => {
-  const { nombre, email, contrasena, especialidad, dermatologo_id } = req.body;
+  const { nombre, email, contrasena, especialidad } = req.body;
   const rol = String(req.body.rol || '').toUpperCase();
+
+  // Acepta una lista (dermatologo_ids) o un solo número (dermatologo_id)
+  let medicos = Array.isArray(req.body.dermatologo_ids)
+    ? req.body.dermatologo_ids
+    : (req.body.dermatologo_id ? [req.body.dermatologo_id] : []);
+  medicos = [...new Set(medicos.map(Number))]; // sin repetidos
 
   if (!nombre || !email || !contrasena || !['MEDICO', 'PACIENTE'].includes(rol)) {
     return res.status(400).json({ error: 'Faltan datos o el rol no es válido (MEDICO o PACIENTE)' });
@@ -155,12 +161,13 @@ app.post('/api/auth/register', async (req, res) => {
   if (rol === 'MEDICO' && !especialidad) {
     return res.status(400).json({ error: 'Falta la especialidad' });
   }
-  if (rol === 'PACIENTE' && !dermatologo_id) {
-    return res.status(400).json({ error: 'Falta el médico asignado' });
+  if (rol === 'PACIENTE' && (medicos.length === 0 || medicos.some((m) => !Number.isInteger(m)))) {
+    return res.status(400).json({ error: 'Elegí al menos un médico (números de id)' });
   }
 
+  const client = await pool.connect();
   try {
-    const existente = await pool.query(
+    const existente = await client.query(
       'SELECT 1 FROM paciente WHERE email = $1 UNION ALL SELECT 1 FROM dermatologo WHERE email = $1',
       [email]
     );
@@ -168,24 +175,43 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(409).json({ error: 'Ya existe una cuenta con ese email' });
     }
 
+    if (rol === 'PACIENTE') {
+      // Chequeamos que todos los médicos elegidos existan
+      const med = await client.query('SELECT id FROM dermatologo WHERE id = ANY($1::int[])', [medicos]);
+      if (med.rows.length !== medicos.length) {
+        return res.status(400).json({ error: 'Alguno de los médicos elegidos no existe' });
+      }
+    }
+
     const hash = await bcrypt.hash(contrasena, 10);
 
-    let resultado;
     if (rol === 'MEDICO') {
-      resultado = await pool.query(
+      const r = await client.query(
         'INSERT INTO dermatologo (nombre, email, contrasena, especialidad) VALUES ($1, $2, $3, $4) RETURNING id, nombre, email, especialidad',
         [nombre, email, hash, especialidad]
       );
-    } else {
-      resultado = await pool.query(
-        'INSERT INTO paciente (nombre, email, contrasena, dermatologo_id) VALUES ($1, $2, $3, $4) RETURNING id, nombre, email, dermatologo_id',
-        [nombre, email, hash, dermatologo_id]
-      );
+      return res.status(201).json({ rol, ...r.rows[0] });
     }
 
-    res.status(201).json({ rol, ...resultado.rows[0] });
+    // Paciente: se guarda todo junto o no se guarda nada (transacción)
+    await client.query('BEGIN');
+    const p = await client.query(
+      'INSERT INTO paciente (nombre, email, contrasena, dermatologo_id) VALUES ($1, $2, $3, $4) RETURNING id, nombre, email',
+      [nombre, email, hash, medicos[0]]
+    );
+    for (const m of medicos) {
+      await client.query(
+        'INSERT INTO paciente_dermatologo (paciente_id, dermatologo_id) VALUES ($1, $2)',
+        [p.rows[0].id, m]
+      );
+    }
+    await client.query('COMMIT');
+    res.status(201).json({ rol, ...p.rows[0], dermatologo_ids: medicos });
   } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (e) {}
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
