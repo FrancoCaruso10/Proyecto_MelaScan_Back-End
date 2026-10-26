@@ -73,36 +73,35 @@ app.get('/mensajes', verificarToken, async (req, res) => {
   }
 });
 
-// --- ENVIAR MENSAJE (quién manda sale del token) ---
+// --- ENVIAR MENSAJE (quién manda sale del token; solo entre médico y paciente asignados) ---
 app.post('/mensajes', verificarToken, async (req, res) => {
   const { texto } = req.body;
   if (!texto) {
     return res.status(400).json({ error: 'Falta el texto del mensaje' });
   }
 
-  try {
-    let paciente_id;
-    let dermatologo_id;
+  // Quién soy sale del token; a quién le escribo lo dice la carta
+  let paciente_id;
+  let dermatologo_id;
+  if (req.usuario.rol === 'PACIENTE') {
+    paciente_id = req.usuario.id;
+    dermatologo_id = Number(req.body.dermatologo_id);
+  } else {
+    dermatologo_id = req.usuario.id;
+    paciente_id = Number(req.body.paciente_id);
+  }
+  if (!Number.isInteger(paciente_id) || !Number.isInteger(dermatologo_id)) {
+    return res.status(400).json({ error: 'Falta a quién le escribís (dermatologo_id o paciente_id)' });
+  }
 
-    if (req.usuario.rol === 'PACIENTE') {
-      // El paciente le escribe a su médico asignado
-      paciente_id = req.usuario.id;
-      const p = await pool.query('SELECT dermatologo_id FROM paciente WHERE id = $1', [paciente_id]);
-      dermatologo_id = p.rows[0] && p.rows[0].dermatologo_id;
-      if (!dermatologo_id) {
-        return res.status(400).json({ error: 'No tenés un médico asignado' });
-      }
-    } else {
-      // El médico elige a qué paciente le escribe, pero solo a los suyos
-      dermatologo_id = req.usuario.id;
-      paciente_id = req.body.paciente_id;
-      const p = await pool.query(
-        'SELECT 1 FROM paciente WHERE id = $1 AND dermatologo_id = $2',
-        [paciente_id, dermatologo_id]
-      );
-      if (p.rows.length === 0) {
-        return res.status(403).json({ error: 'Ese paciente no es tuyo' });
-      }
+  try {
+    // Solo se puede escribir a alguien con quien hay una pareja en la tabla nueva
+    const pareja = await pool.query(
+      'SELECT 1 FROM paciente_dermatologo WHERE paciente_id = $1 AND dermatologo_id = $2',
+      [paciente_id, dermatologo_id]
+    );
+    if (pareja.rows.length === 0) {
+      return res.status(403).json({ error: 'No tenés una relación con esa persona' });
     }
 
     const { rows } = await pool.query(
